@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>今日のToDo</title>
+  <style>
+:root { color-scheme: light; font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; color: #27392f; background: #f5f7f3; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.app { width: min(640px, calc(100% - 32px)); margin: 80px auto; }
+.eyebrow { color: #558166; letter-spacing: .2em; font-size: 12px; font-weight: 700; }
+h1 { font-size: 36px; letter-spacing: -.04em; margin: 16px 0 10px; } h1 span { color: #73a37e; font-size: 14px; margin-left: 12px; }
+.subtitle { color: #728077; font-size: 14px; margin-bottom: 32px; }
+.card { background: white; border: 1px solid #e1e8df; border-radius: 20px; padding: 28px; box-shadow: 0 12px 40px #27392f06; }
+#task-form { display: flex; gap: 10px; } input { flex: 1; min-width: 0; padding: 15px; border: 1px solid #dde5dc; border-radius: 10px; background: #fafcf9; font: inherit; font-size: 15px; }
+button { cursor: pointer; font: inherit; } .add { padding: 0 20px; border: 0; border-radius: 10px; background: #436d50; color: white; font-weight: 600; white-space: nowrap; } .add:hover { background: #32563d; }
+:focus-visible { outline: 3px solid #84ad8e; outline-offset: 3px; }
+.list-header { display: flex; align-items: center; justify-content: space-between; margin: 28px 0 12px; } h2 { font-size: 14px; margin: 0; } #count { background: #eef4ec; border-radius: 20px; padding: 4px 10px; font-size: 12px; color: #57765e; }
+ul { list-style: none; margin: 0; padding: 0; } li { display: flex; align-items: center; gap: 12px; padding: 16px 0; border-bottom: 1px solid #edf0eb; }
+.task-label { display: flex; gap: 12px; align-items: center; flex: 1; min-width: 0; cursor: pointer; } .task-label input { accent-color: #436d50; width: 20px; height: 20px; flex: none; margin: 0; cursor: pointer; } .task-text { overflow-wrap: anywhere; font-size: 15px; line-height: 1.6; } .done .task-text { text-decoration: line-through; color: #8b958d; }
+.delete { border: 0; background: transparent; color: #7d887f; border-radius: 8px; padding: 10px; font-size: 13px; } .delete:hover { background: #fff0ed; color: #a53e30; }
+#empty { text-align: center; padding: 42px 0 46px; color: #7a877c; } .empty-icon { display: inline-grid; place-items: center; background: #eef4ec; color: #71957a; height: 50px; width: 50px; border-radius: 50%; font-size: 24px; } h3 { font-size: 16px; font-weight: 500; margin: 18px 0 8px; } #empty p { font-size: 13px; }
+[hidden] { display: none !important; } footer { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #7a877c; padding-top: 20px; border-top: 1px solid #edf0eb; } .storage-note { text-align: center; font-size: 12px; color: #7a877c; margin-top: 24px; } #notice { color: #a53e30; font-size: 13px; } #notice:empty { display: none; } .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 480px) { .app { margin: 40px auto; } .card { padding: 20px; } h1 { font-size: 30px; } .add { padding: 0 14px; } footer { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header><p class="eyebrow">MY DAILY LIST</p><h1>今日のToDo<span>●</span></h1><p class="subtitle">ひとつずつ、気持ちよく片づけよう。</p></header>
+    <section class="card" aria-label="タスクリスト">
+      <div id="task-form"><label for="task-input" class="sr-only">新しいタスク</label><input id="task-input" placeholder="やることを入力…" maxlength="200" required autocomplete="off"><button class="add" type="button">＋ 追加</button></div>
+      <p id="notice" role="status"></p>
+      <div class="list-header"><h2>やること</h2><span id="count" aria-live="polite"></span></div>
+      <ul id="tasks"></ul>
+      <div id="empty"><span class="empty-icon" aria-hidden="true">✓</span><h3>リストはすっきり。</h3><p>最初のタスクを追加してみましょう。</p></div>
+      <footer><span id="progress" aria-live="polite"></span><span>自分のペースで進めよう</span></footer>
+    </section>
+    <p class="storage-note">タスクはこのブラウザに保存されます。</p>
+  </main>
+  <script>
+const storageKey = 'daily-todo-v1';
+const addButton = document.querySelector('.add');
+const input = document.querySelector('#task-input');
+const list = document.querySelector('#tasks');
+const notice = document.querySelector('#notice');
+let tasks = [];
+try {
+  const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+  if (!Array.isArray(saved) || saved.some(t => !t || typeof t.id !== 'string' || typeof t.text !== 'string' || typeof t.done !== 'boolean')) throw new Error('Invalid data');
+  tasks = saved;
+} catch {
+  notice.textContent = '保存したタスクを読み込めませんでした。この画面で追加できます。';
+}
+function save() {
+  try { localStorage.setItem(storageKey, JSON.stringify(tasks)); notice.textContent = ''; }
+  catch { notice.textContent = '保存できませんでした。タスクはこの画面を閉じると失われます。'; }
+}
+function render() {
+  list.replaceChildren();
+  for (const task of tasks) {
+    const row = document.createElement('li');
+    row.classList.toggle('done', task.done);
+    const label = document.createElement('label');
+    label.className = 'task-label';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox'; checkbox.checked = task.done;
+    checkbox.addEventListener('change', () => {
+      task.done = checkbox.checked;
+      row.classList.toggle('done', task.done);
+      save(); updateCount();
+    });
+    const text = document.createElement('span');
+    text.className = 'task-text'; text.textContent = task.text;
+    label.append(checkbox, text);
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'delete'; remove.textContent = '削除';
+    remove.setAttribute('aria-label', `${task.text}を削除`);
+    remove.addEventListener('click', () => {
+      const index = tasks.indexOf(task);
+      tasks.splice(index, 1); save(); render();
+      const next = list.children[Math.min(index, tasks.length - 1)];
+      (next?.querySelector('.delete') || input).focus();
+    });
+    row.append(label, remove); list.append(row);
+  }
+  updateCount();
+}
+function updateCount() {
+  const done = tasks.filter(t => t.done).length;
+  document.querySelector('#count').textContent = `${tasks.length - done}件 未完了`;
+  document.querySelector('#progress').textContent = `${done} / ${tasks.length} 完了`;
+  document.querySelector('#empty').hidden = tasks.length > 0;
+}
+function addTask() {
+  const text = input.value.trim();
+  if (!text) { input.setCustomValidity('タスクを入力してください。'); input.reportValidity(); return; }
+  tasks.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, text, done: false });
+  save(); render(); input.value = ''; input.focus();
+}
+addButton.addEventListener('click', addTask);
+input.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+    event.preventDefault();
+    addTask();
+  }
+});
+input.addEventListener('input', () => input.setCustomValidity(''));
+render();
+  </script>
+</body>
+</html>
